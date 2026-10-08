@@ -28,7 +28,8 @@ We use two Eurostat datasets:
 **1. Housing-cost overburden by tenure status**
 
 Dataset: ilc_lvho07c
-Link : 
+
+Link : https://ec.europa.eu/eurostat/databrowser/view/ilc_lvho07c/default/table?lang=en&utm_source
 
 This dataset shows the percentage of people living in households that are overburdened by housing costs, broken down by housing tenure:
 
@@ -43,7 +44,8 @@ This dataset shows the percentage of people living in households that are overbu
 **2. Housing-cost overburden by income quintile**
 
 Dataset: ilc_lvho07b
-Link: 
+
+Link: https://ec.europa.eu/eurostat/databrowser/view/ilc_lvho07b/default/table?lang=en&utm_source
 
 This dataset shows the housing-cost overburden rate across five income groups, or income quintiles. Each quintile represents 20% of the population, ranked according to equivalised disposable income.
 
