@@ -89,17 +89,17 @@ Identify whether Germany shows a different pattern from other European countries
 
 The project will be developed using:
 
-R
+- R
 
-ggplot2
+- ggplot2
 
-dplyr
+- dplyr
 
-tidyr
+- tidyr
 
-Quarto
+- Quarto
 
-GitHub
+- GitHub
 
 **Project Structure**
 
