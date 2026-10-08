@@ -53,11 +53,11 @@ This dataset shows the housing-cost overburden rate across five income groups, o
 
 1st quintile — lowest-income 20%
 
-2nd quintile
+2nd quintile - 20%–40% of the income distribution 
 
-3rd quintile
+3rd quintile - 40%–60% of the income distribution 
 
-4th quintile
+4th quintile - 60%–80% of the income distribution 
 
 5th quintile — highest-income 20%
 
