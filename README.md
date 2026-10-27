@@ -19,7 +19,6 @@ Our data story will explore three main questions:
 **3. How does housing-cost overburden across tenure and income groups in Germany compare with the broader European pattern?**
 
 
-We will also examine how housing-cost overburden varies across income groups.
 
 **Target Audience and Personas**
 
