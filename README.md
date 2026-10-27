@@ -166,13 +166,14 @@ The project will be developed using:
 
 The repository will contain the analysis, visualisations and final data story. The structure may develop as the project progresses.
 
-DataStory_HousingCosts/
+```textThe-Rent-Squeeze-/
 │
 ├── README.md
 ├── report.qmd
 ├── data/
 ├── figures/
 └── ...
+```
 
 **Expected Story**
 
