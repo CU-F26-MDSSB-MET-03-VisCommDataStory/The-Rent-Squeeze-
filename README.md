@@ -109,7 +109,7 @@ We plan to develop four main visualisations to communicate housing-cost overburd
 
 **1. Housing-Cost Overburden by Tenure Status**
 
-This visualisation will compare housing-cost overburden rates across different tenure groups, including market-price renters, reduced-price renters, homeowners with mortgages and homeowners without mortgages. We plan to use a grouped bar chart or dot plot to highlight differences between these groups across European countries.
+This visualisation compares housing-cost overburden rates across four tenure groups in Germany: market-price renters, reduced-price renters, homeowners with mortgages and homeowners without mortgages. We use a bar chart to highlight differences between these groups and examine whether renting or homeownership is associated with greater housing-cost pressure. The broader comparison between Germany and the EU aggregate is explored in Visualisation 4.
 
 - **Dataset:** Eurostat ilc_lvho07c
 - **Research Question:** RQ1
