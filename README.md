@@ -150,7 +150,7 @@ The final choice of visualisations will depend on data availability, completenes
 The project will be developed using:
 
 - R
-
+- Python
 - ggplot2
 
 - dplyr
