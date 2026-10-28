@@ -151,6 +151,7 @@ The project will be developed using:
 
 - R
 - Python
+- Matplotlib
 - ggplot2
 
 - dplyr
