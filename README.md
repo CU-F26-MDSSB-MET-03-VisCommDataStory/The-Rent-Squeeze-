@@ -153,13 +153,10 @@ The project will be developed using:
 - Python
 - Matplotlib
 - ggplot2
-
+- forcats
 - dplyr
-
 - tidyr
-
 - Quarto
-
 - GitHub
 
 **Project Structure**
