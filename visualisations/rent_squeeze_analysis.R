@@ -694,3 +694,172 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
+
+
+# ============================================================
+# Housing-Cost Overburden Over Time: Germany vs EU-27
+# ============================================================
+
+library(eurostat)
+library(dplyr)
+library(ggplot2)
+
+# 1. Download the Eurostat dataset
+
+trend_data <- get_eurostat(
+  "ilc_lvho07c",
+  time_format = "num"
+)
+
+# 2. Prepare the data
+
+optional_data <- trend_data %>%
+  filter(
+    geo %in% c("DE", "EU27_2020"),
+    tenure == "RENT_MKT",
+    unit == "PC",
+    TIME_PERIOD >= 2015,
+    TIME_PERIOD <= 2025,
+    !is.na(values)
+  ) %>%
+  mutate(
+    country = case_when(
+      geo == "DE" ~ "Germany",
+      geo == "EU27_2020" ~ "EU-27"
+    ),
+    year = as.integer(TIME_PERIOD)
+  ) %>%
+  arrange(country, year)
+
+# 3. Check the data
+
+print(
+  optional_data %>%
+    select(country, year, values),
+  n = Inf
+)
+
+# Check for duplicate observations
+
+optional_data %>%
+  count(country, year) %>%
+  print(n = Inf)
+
+# 4. Prepare labels for the final year
+
+end_labels <- optional_data %>%
+  filter(year == 2025) %>%
+  mutate(
+    label = paste0(round(values, 1), "%")
+  )
+
+# 5. Create the improved line graph
+
+optional_visual <- ggplot(
+  optional_data,
+  aes(
+    x = year,
+    y = values,
+    colour = country,
+    group = country
+  )
+) +
+
+  # Draw the lines
+  geom_line(linewidth = 1.3) +
+
+  # Add points for each year
+  geom_point(size = 3) +
+
+  # Add percentage labels for 2025
+  geom_text(
+    data = end_labels,
+    aes(label = label),
+    hjust = -0.2,
+    size = 4,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+
+  # Highlight Germany's sharp decline in 2020
+  annotate(
+    "label",
+    x = 2019.7,
+    y = 16,
+    label = "Sharp decline in Germany\nbetween 2019 and 2020",
+    size = 3.5,
+    fill = "#E8F5F1",
+    colour = "#216E63"
+  ) +
+
+  # Set colours for Germany and the EU-27
+  scale_colour_manual(
+    values = c(
+      "Germany" = "#2A9D8F",
+      "EU-27" = "#4C8AB6"
+    )
+  ) +
+
+  # Set the year axis
+  scale_x_continuous(
+    breaks = seq(2015, 2025, 1),
+    limits = c(2015, 2026)
+  ) +
+
+  # Display percentages on the vertical axis
+  scale_y_continuous(
+    labels = function(x) paste0(x, "%")
+  ) +
+
+  # Add titles and labels
+  labs(
+    title = "Has Housing-Cost Pressure Changed Over Time?",
+    subtitle = "Market-price renters in Germany and the EU-27 (2015–2025)",
+    x = "Year",
+    y = "Housing-cost overburden rate (%)",
+    colour = NULL,
+    caption = "Source: Eurostat (ilc_lvho07c)"
+  ) +
+
+  # Improve the appearance
+  theme_minimal(base_size = 13) +
+
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      size = 17
+    ),
+
+    plot.subtitle = element_text(
+      size = 11
+    ),
+
+    legend.position = "bottom",
+
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    ),
+
+    panel.grid.minor = element_blank(),
+
+    plot.caption = element_text(
+      size = 9
+    )
+  )
+
+# 6. Display the graph
+
+print(optional_visual)
+
+# 7. Save the graph in the visualisations folder
+
+ggsave(
+  "visualisations/optional_housing_cost_trends.png",
+  plot = optional_visual,
+  width = 12,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+
