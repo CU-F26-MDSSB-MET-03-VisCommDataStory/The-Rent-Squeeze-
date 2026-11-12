@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 
 path = sys.argv[1] if len(sys.argv) > 1 else "data/ilc_lvho07c_defaultview_spreadsheet.xlsx"
 os.makedirs("data", exist_ok=True)
-os.makedirs("figures", exist_ok=True)
+os.makedirs("visualisations", exist_ok=True)
 raw = pd.read_excel(path, header=None)
 
 # --- locate the header row ("TIME") and the first country row -------------
@@ -68,5 +68,5 @@ ax.spines[["top", "right"]].set_visible(False)
 fig.text(0.01, 0.01, f"Source: Eurostat EU-SILC (ilc_lvho07c). Group: {tenure}. "
          "Housing cost overburden rate.", fontsize=9, color="gray")
 plt.tight_layout(rect=(0, 0.03, 1, 1))
-plt.savefig("figures/image1_germany_italy_spain.png", dpi=200)
-print("Saved figures/image1_germany_italy_spain.png and data/housing_overburden_tidy.csv")
+plt.savefig("visualisations/image1_germany_italy_spain.png", dpi=200)
+print("Saved visualisations/image1_germany_italy_spain.png and data/housing_overburden_tidy.csv")
