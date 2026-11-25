@@ -1,133 +1,610 @@
-# VISUALISATION 1
-# Housing-cost burden in Germany
 
-library(ggplot2)
+
+# THE RENT SQUEEZE
+# Who Bears the Housing-Cost Burden in Europe?
+
+
+# ============================================================
+# SECTION 1: LOAD PACKAGES AND PROJECT SETTINGS
+# ============================================================
+
+library(jsonlite)
 library(dplyr)
+library(ggplot2)
 
-# 1. Prepare the data
+# Confirm that we are in the project root
+stopifnot(dir.exists("visualisations"))
 
-visual1_new_data <- visual1_data %>%
-  mutate(
-    housing_group = factor(
-      housing_group,
-      levels = c(
-        "Market-price renters",
-        "Owners with mortgages",
-        "Reduced/free renters",
-        "Owners without mortgages"
+# Create the data directory if necessary
+dir.create("data", showWarnings = FALSE)
+
+# Reference year
+year <- 2025
+
+
+# ============================================================
+# SECTION 2: AUTOMATIC EUROSTAT DATA COLLECTION
+# ============================================================
+
+# Download data on the first run.
+# Use saved snapshots on subsequent runs to ensure
+# reproducibility and prevent changes caused by data revisions.
+
+
+# ============================================================
+# SECTION 2: AUTOMATIC EUROSTAT DATA COLLECTION
+# ============================================================
+
+# Download directly from the official Eurostat API.
+# Convert JSON-stat data into a standard R data frame.
+
+download_eurostat <- function(id) {
+
+  url <- paste0(
+    "https://ec.europa.eu/eurostat/api/dissemination/",
+    "statistics/1.0/data/",
+    id,
+    "?lang=en"
+  )
+
+  message("Downloading Eurostat dataset: ", id)
+
+  raw <- jsonlite::fromJSON(
+    url,
+    simplifyVector = FALSE
+  )
+
+  # Extract dimensions in their original order
+
+  dimensions <- unlist(raw$id)
+
+  categories <- lapply(dimensions, function(d) {
+
+    index <- unlist(
+      raw$dimension[[d]]$category$index
+    )
+
+    names(sort(index))
+  })
+
+  names(categories) <- dimensions
+
+  # Reconstruct the JSON-stat observation grid
+
+  result <- expand.grid(
+    rev(categories),
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  result <- result[, dimensions, drop = FALSE]
+
+  # Extract observed values
+
+  values <- rep(NA_real_, nrow(result))
+
+  observed <- unlist(raw$value)
+
+  if (length(observed) > 0) {
+
+    if (!is.null(names(observed))) {
+
+      positions <- as.integer(names(observed)) + 1L
+
+      values[positions] <- as.numeric(observed)
+
+    } else {
+
+      stopifnot(length(observed) == nrow(result))
+
+      values <- as.numeric(observed)
+    }
+  }
+
+  result$values <- values
+
+  # Standardise the year column
+
+  if ("time" %in% names(result)) {
+
+    names(result)[names(result) == "time"] <-
+      "TIME_PERIOD"
+  }
+
+  result$TIME_PERIOD <- as.integer(
+    result$TIME_PERIOD
+  )
+
+  # Remove missing observations
+
+  result <- result[
+    !is.na(result$values),
+    ,
+    drop = FALSE
+  ]
+
+  return(result)
+}
+
+
+# Save data snapshots for reproducibility.
+# Subsequent runs use the saved data rather than
+# downloading potentially revised Eurostat figures.
+
+snapshot <- function(id) {
+
+  path <- file.path(
+    "data",
+    paste0("rent_squeeze_", id, ".csv")
+  )
+
+  if (file.exists(path)) {
+
+    message("Loading saved dataset: ", id)
+
+    return(
+      read.csv(
+        path,
+        stringsAsFactors = FALSE
       )
     )
+  }
+
+  d <- download_eurostat(id)
+
+  write.csv(
+    d,
+    path,
+    row.names = FALSE
   )
 
-# 2. Create the graph
+  return(d)
+}
 
-visual1_new <- ggplot(
-  visual1_new_data,
-  aes(x = housing_group, y = values, fill = housing_group)
-) +
 
-  geom_col(width = 0.65) +
+# Housing-cost overburden by tenure
 
-  geom_text(
-    aes(label = paste0(values, "%")),
-    vjust = -0.5,
-    size = 5
-  ) +
+tenure_data <- snapshot("ilc_lvho07c")
 
-  scale_fill_manual(
-    values = c(
-      "Market-price renters" = "#E76F51",
-      "Owners with mortgages" = "#2A9D8F",
-      "Reduced/free renters" = "#B5BCC3",
-      "Owners without mortgages" = "#B5BCC3"
+
+# Housing-cost overburden by income quintile
+
+income_data <- snapshot("ilc_lvho07b")
+
+
+# ============================================================
+# SECTION 3: DATA CLEANING AND PREPARATION
+# ============================================================
+
+normalise <- function(d) {
+
+  if (
+    !"TIME_PERIOD" %in% names(d) &&
+    "time" %in% names(d)
+  ) {
+    names(d)[names(d) == "time"] <- "TIME_PERIOD"
+  }
+
+  d %>%
+    filter(
+      unit == "PC",
+      !is.na(values)
     )
-  ) +
+}
 
- annotate(
-  "label",
-  x = 1.5,
-  y = 15.2,
-  label = "Only a 0.2 percentage-point gap",
-  size = 4.2,
-  colour = "#333333",
-  fill = "#F5F5F5",
-  linewidth = 0
-) +
+tenure_data <- normalise(tenure_data)
+income_data <- normalise(income_data)
 
-  scale_y_continuous(
-    limits = c(0, 20),
-    breaks = seq(0, 20, 5)
-  ) +
 
-  labs(
-    title = "Renting or Buying? Germany's Housing-Cost Burden Is Almost the Same",
-    subtitle = "Market-price renters and mortgage holders face nearly identical overburden rates (2025)",
-    x = NULL,
-    y = "Housing-cost overburden rate (%)",
-    caption = "Source: Eurostat (ilc_lvho07c)"
-  ) +
+# Tenure categories
 
-  theme_minimal(base_size = 13) +
+tcodes <- c(
+  "RENT_MKT",
+  "OWN_L",
+  "RENT_FR",
+  "OWN_NL"
+)
 
-  theme(
-    legend.position = "none",
-    plot.title = element_text(face = "bold", size = 16),
-    plot.subtitle = element_text(size = 11),
-    axis.text.x = element_text(angle = 15, hjust = 1),
-    panel.grid.major.x = element_blank()
-  )
-
-# 3. Display the graph
-
-print(visual1_new)
-
-# 4. Save the graph
-
-ggsave(
-  "visual1_germany_redesigned.png",
-  plot = visual1_new,
-  width = 12,
-  height = 7,
-  dpi = 300,
-  bg = "white"
+tlabels <- c(
+  "Market-price renters",
+  "Owners with mortgages",
+  "Reduced/free renters",
+  "Owners without mortgages"
 )
 
 
+# Income quintiles
+
+qcodes <- paste0("QU", 1:5)
+
+qlabels <- c(
+  "Lowest 20%",
+  "Second 20%",
+  "Middle 20%",
+  "Fourth 20%",
+  "Highest 20%"
+)
 
 
-# VISUALISATION 2
-# Housing-cost pressure among market-price renters across Europe
-# Target persona: Ogiyonke
+# Geographical labels
 
-library(ggplot2)
-library(dplyr)
+locations <- c(
+  DE = "Germany",
+  EU27_2020 = "EU-27"
+)
 
-# 1. Prepare the data
 
-visual2_new_data <- visual2_data %>%
+# Consistent geographical colours
+
+cols <- c(
+  "Germany" = "#2A9D8F",
+  "EU-27" = "#4C8AB6"
+)
+
+
+# Consistent tenure colours
+
+tcols <- setNames(
+  c(
+    "#E76F51",
+    "#2A9D8F",
+    "#B5BCC3",
+    "#B5BCC3"
+  ),
+  tlabels
+)
+
+
+# ============================================================
+# SECTION 4: DATA VALIDATION
+# ============================================================
+
+# Check for duplicate observations, missing categories
+# and invalid percentage values.
+
+check <- function(d, keys, n = NULL) {
+
+  if (
+    anyDuplicated(d[keys]) ||
+    (!is.null(n) && nrow(d) != n) ||
+    any(
+      !is.finite(d$values) |
+      d$values < 0 |
+      d$values > 100
+    )
+  ) {
+
+    stop(
+      "Unexpected Eurostat coverage or duplicate observations: ",
+      paste(keys, collapse = ", ")
+    )
+  }
+
+  return(d)
+}
+
+
+# Prepare tenure data for 2025
+
+t <- tenure_data %>%
+  filter(
+    TIME_PERIOD == year,
+    tenure %in% tcodes
+  ) %>%
   mutate(
-    highlight = case_when(
-      country == "Romania" ~ "Highest rate",
-      country == "Finland" ~ "Lowest rate",
-      country == "Germany" ~ "Germany",
-      country == "EU-27 average" ~ "EU-27",
-      TRUE ~ "Other countries"
-    ),
-    country = reorder(country, values)
+    housing_group = factor(
+      tenure,
+      levels = tcodes,
+      labels = tlabels
+    )
   )
 
-# 2. Create the graph
 
-visual2_new <- ggplot(
-  visual2_new_data,
-  aes(x = values, y = country, fill = highlight)
+# Prepare income data for 2025
+
+i <- income_data %>%
+  filter(
+    TIME_PERIOD == year,
+    quant_inc %in% qcodes
+  ) %>%
+  mutate(
+    income_group = factor(
+      quant_inc,
+      levels = qcodes,
+      labels = qlabels
+    )
+  )
+
+
+# Prepare Visualisation 1 data
+
+visual1_data <- check(
+  filter(t, geo == "DE"),
+  "tenure",
+  4
+)
+
+
+# Prepare Visualisation 3 data
+
+visual3_data <- check(
+  filter(i, geo == "EU27_2020"),
+  "quant_inc",
+  5
+)
+
+
+# Prepare Visualisation 4A data
+
+visual4a_data <- check(
+  filter(
+    t,
+    geo %in% names(locations),
+    tenure %in% tcodes[1:2]
+  ),
+  c("geo", "tenure"),
+  4
+) %>%
+  mutate(
+    location = unname(locations[geo])
+  )
+
+
+# Prepare Visualisation 4B data
+
+visual4b_data <- check(
+  filter(
+    i,
+    geo %in% names(locations)
+  ),
+  c("geo", "quant_inc"),
+  10
+) %>%
+  mutate(
+    location = unname(locations[geo])
+  )
+
+
+# ============================================================
+# SECTION 5: EUROPEAN COUNTRY COMPARISON DATA
+# ============================================================
+
+countries <- c(
+  AT = "Austria",
+  BE = "Belgium",
+  BG = "Bulgaria",
+  HR = "Croatia",
+  CY = "Cyprus",
+  CZ = "Czechia",
+  DK = "Denmark",
+  EE = "Estonia",
+  FI = "Finland",
+  FR = "France",
+  DE = "Germany",
+  EL = "Greece",
+  HU = "Hungary",
+  IE = "Ireland",
+  IT = "Italy",
+  LV = "Latvia",
+  LT = "Lithuania",
+  LU = "Luxembourg",
+  MT = "Malta",
+  NL = "Netherlands",
+  PL = "Poland",
+  PT = "Portugal",
+  RO = "Romania",
+  SK = "Slovakia",
+  SI = "Slovenia",
+  ES = "Spain",
+  SE = "Sweden",
+  IS = "Iceland",
+  NO = "Norway",
+  CH = "Switzerland",
+  RS = "Serbia",
+  ME = "Montenegro",
+  MK = "North Macedonia",
+  AL = "Albania",
+  TR = "Türkiye",
+  BA = "Bosnia and Herzegovina",
+  XK = "Kosovo",
+  UK = "United Kingdom",
+  EU27_2020 = "EU-27"
+)
+
+
+visual2_data <- check(
+  filter(
+    t,
+    tenure == "RENT_MKT",
+    geo %in% names(countries)
+  ),
+  "geo"
+) %>%
+  mutate(
+    country = unname(countries[geo])
+  )
+
+stopifnot(nrow(visual2_data) > 2)
+
+
+# Exclude EU aggregate when identifying highest
+# and lowest individual country rates.
+
+actual <- visual2_data %>%
+  filter(geo != "EU27_2020")
+
+
+# Automatically identify countries to highlight
+
+visual2_data <- visual2_data %>%
+  mutate(
+    highlight = case_when(
+      geo == "DE" ~ "Germany",
+      geo == "EU27_2020" ~ "EU-27",
+      values == max(actual$values) ~ "Highest rate",
+      values == min(actual$values) ~ "Lowest rate",
+      TRUE ~ "Other countries"
+    )
+  )
+
+
+# ============================================================
+# SECTION 6: HISTORICAL TREND DATA
+# ============================================================
+
+optional_data <- check(
+  filter(
+    tenure_data,
+    geo %in% names(locations),
+    tenure == "RENT_MKT",
+    TIME_PERIOD %in% 2015:year
+  ),
+  c("geo", "TIME_PERIOD")
+) %>%
+  mutate(
+    country = unname(locations[geo])
+  )
+
+stopifnot(
+  all(names(locations) %in% optional_data$geo)
+)
+
+
+# ============================================================
+# SECTION 7: COMMON VISUALISATION DESIGN
+# ============================================================
+
+# Percentage formatting
+
+pct <- function(x) {
+  sprintf("%.1f%%", x)
+}
+
+
+# Consistent theme for all graphs
+
+base <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      size = 17
+    ),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    plot.caption = element_text(
+      size = 9
+    )
+  )
+
+
+# Consistent source captions
+
+cap <- function(id) {
+
+  paste0(
+    "Source: Eurostat (",
+    id,
+    "), ",
+    year,
+    ". Overburden: housing costs exceed 40% ",
+    "of disposable income."
+  )
+}
+
+
+# Function to display and save graphs
+
+save_plot <- function(p, name, w = 12, h = 7) {
+
+  ggsave(
+    filename = file.path(
+      "visualisations",
+      name
+    ),
+    plot = p,
+    width = w,
+    height = h,
+    dpi = 300,
+    bg = "white"
+  )
+
+  print(p)
+}
+
+
+# ============================================================
+# VISUALISATION 1
+# Housing-cost overburden by tenure in Germany
+# ============================================================
+
+p1 <- ggplot(
+  visual1_data,
+  aes(
+    x = housing_group,
+    y = values,
+    fill = housing_group
+  )
 ) +
 
-  geom_col(width = 0.75) +
+  geom_col(
+    width = 0.65
+  ) +
 
   geom_text(
-    aes(label = paste0(round(values, 1), "%")),
-    hjust = -0.15,
+    aes(label = pct(values)),
+    vjust = -0.5
+  ) +
+
+  scale_fill_manual(
+    values = tcols
+  ) +
+
+  scale_y_continuous(
+    expand = expansion(
+      mult = c(0, 0.18)
+    )
+  ) +
+
+  labs(
+    title = "Housing-cost overburden across tenure groups in Germany",
+    x = NULL,
+    y = "Overburden rate (%)",
+    caption = cap("ilc_lvho07c")
+  ) +
+
+  base +
+
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(
+      angle = 15,
+      hjust = 1
+    ),
+    panel.grid.major.x = element_blank()
+  )
+
+
+# ============================================================
+# VISUALISATION 2
+# Market-price renters across Europe
+# ============================================================
+
+p2 <- ggplot(
+  visual2_data,
+  aes(
+    x = values,
+    y = reorder(country, values),
+    fill = highlight
+  )
+) +
+
+  geom_col(
+    width = 0.75
+  ) +
+
+  geom_text(
+    aes(label = pct(values)),
+    hjust = -0.12,
     size = 3.2
   ) +
 
@@ -138,220 +615,318 @@ visual2_new <- ggplot(
       "Germany" = "#2A9D8F",
       "EU-27" = "#4C8AB6",
       "Other countries" = "#B5BCC3"
-    ),
-    breaks = c(
-      "Highest rate",
-      "Lowest rate",
-      "Germany",
-      "EU-27",
-      "Other countries"
     )
   ) +
 
   scale_x_continuous(
-    limits = c(0, 65),
-    breaks = seq(0, 60, 10)
+    expand = expansion(
+      mult = c(0, 0.15)
+    )
   ) +
 
   labs(
-    title = "Thinking of Moving to Europe? Housing-Cost Pressure Varies Dramatically",
-    subtitle = "Housing-cost overburden among market-price renters across European countries (2025)",
-    x = "Housing-cost overburden rate (%)",
+    title = "Housing-cost pressure among market-price renters varies across Europe",
+    x = "Overburden rate (%)",
     y = NULL,
     fill = NULL,
-    caption = "Source: Eurostat (ilc_lvho07c)"
+    caption = cap("ilc_lvho07c")
   ) +
 
-  theme_minimal(base_size = 12) +
+  base +
 
   theme(
-    plot.title = element_text(
-      face = "bold",
-      size = 16
-    ),
-
-    plot.subtitle = element_text(
-      size = 11
-    ),
-
-    legend.position = "bottom",
-
-    panel.grid.major.y = element_blank(),
-
-    axis.text.y = element_text(
-      size = 10
-    ),
-
-    axis.text.x = element_text(
-      size = 10
-    ),
-
-    plot.caption = element_text(
-      size = 9
-    )
+    panel.grid.major.y = element_blank()
   )
 
-# 3. Display the graph
-
-print(visual2_new)
-
-# 4. Save the graph
-
-ggsave(
-  "visual2_market_renters_redesigned.png",
-  plot = visual2_new,
-  width = 12,
-  height = 12,
-  dpi = 300,
-  bg = "white"
-)
 
 # ============================================================
 # VISUALISATION 3
-# Housing-Cost Overburden Across Income Groups
-# Target persona: Sofia
+# Housing-cost overburden by income quintile
 # ============================================================
 
-
-# 1. Download the income dataset
-
-income_data <- get_eurostat(
-  "ilc_lvho07b",
-  time_format = "num"
-)
-
-
-# 2. Check the dataset
-
-head(income_data)
-
-names(income_data)
-
-unique(income_data$quantile)
-
-# 3. Check the available income groups
-
-unique(income_data$quant_inc)
-
-
-# 4. Check EU-27 income groups for 2025
-
-visual3_data <- income_data %>%
-  filter(
-    geo == "EU27_2020",
-    TIME_PERIOD == 2025,
-    unit == "PC",
-    quant_inc %in% c("QU1", "QU2", "QU3", "QU4", "QU5")
+p3 <- ggplot(
+  visual3_data,
+  aes(
+    x = income_group,
+    y = values,
+    fill = quant_inc
   )
-
-
-# 5. Display the results
-
-visual3_data %>%
-  select(quant_inc, values) %>%
-  arrange(quant_inc)
-
-# ============================================================
-# VISUALISATION 3 - REDESIGNED
-# Housing-Cost Overburden Across Income Groups
-# ============================================================
-
-# 1. Prepare the data
-
-visual3_new_data <- visual3_data %>%
-  mutate(
-    income_group = factor(
-      quant_inc,
-      levels = c("QU1", "QU2", "QU3", "QU4", "QU5"),
-      labels = c(
-        "Lowest 20%",
-        "Second 20%",
-        "Middle 20%",
-        "Fourth 20%",
-        "Highest 20%"
-      )
-    ),
-    bar_colour = case_when(
-      quant_inc == "QU1" ~ "Lowest income",
-      quant_inc == "QU5" ~ "Highest income",
-      TRUE ~ "Other groups"
-    )
-  )
-
-
-# 2. Create the redesigned graph
-
-visual3_new <- ggplot(
-  visual3_new_data,
-  aes(x = income_group, y = values, fill = bar_colour)
 ) +
 
-  # Bars
-  geom_col(width = 0.65) +
+  geom_col(
+    width = 0.65
+  ) +
 
-  # Percentage labels
   geom_text(
-    aes(label = paste0(values, "%")),
-    vjust = -0.6,
-    size = 4.5
+    aes(label = pct(values)),
+    vjust = -0.5
   ) +
 
-  # Choose colours
   scale_fill_manual(
-    values = c(
-      "Lowest income" = "#C44E52",
-      "Other groups" = "#B8BEC5",
-      "Highest income" = "#2A9D8F"
+    values = setNames(
+      c(
+        "#C44E52",
+        rep("#B8BEC5", 3),
+        "#2A9D8F"
+      ),
+      qcodes
     )
   ) +
 
-  # Add the main finding
-  annotate(
-  "label",
-  x = 3.5,
-  y = 18,
-  label = "43x higher overburden rate\namong the lowest-income group",
-  size = 4.5,
-  fontface = "bold",
-  fill = "#FFF3F3",
-  colour = "#8B2E35",
-  linewidth = 0
-) +
-
-  # Titles and labels
-  labs(
-    title = "Housing-Cost Pressure Falls Sharply as Income Rises",
-    subtitle = "More than 1 in 4 people in the EU's lowest-income group face housing-cost overburden (2025)",
-    x = "Income group",
-    y = "Housing-cost overburden rate (%)",
-    caption = "Source: Eurostat (ilc_lvho07b)"
-  ) +
-
-  # Axis settings
   scale_y_continuous(
-    limits = c(0, 30),
-    breaks = seq(0, 30, 5),
-    expand = c(0, 0)
+    expand = expansion(
+      mult = c(0, 0.18)
+    )
   ) +
 
-  # Clean theme
-  theme_minimal(base_size = 13) +
+  labs(
+    title = "Housing-cost pressure across EU income groups",
+    x = NULL,
+    y = "Overburden rate (%)",
+    caption = cap("ilc_lvho07b")
+  ) +
+
+  base +
 
   theme(
+    legend.position = "none",
+    panel.grid.major.x = element_blank()
+  )
+
+
+# ============================================================
+# VISUALISATION 4A
+# Germany versus EU by tenure
+#
+# NEW DESIGN: Horizontal bar comparison
+# Replaces the previous dumbbell chart.
+# ============================================================
+
+# Automatically calculate percentage-point differences
+
+visual4a_data <- visual4a_data %>%
+  group_by(location) %>%
+  mutate(
+    gap =
+      values[tenure == "RENT_MKT"] -
+      values[tenure == "OWN_L"],
+
+    panel = sprintf(
+      "%s | Renter minus mortgage: %.1f pp",
+      location,
+      gap
+    )
+  ) %>%
+  ungroup()
+
+
+
+# VISUALISATION 4A
+# Germany versus EU-27 by housing tenure
+
+p4a <- ggplot(
+  visual4a_data %>%
+    mutate(
+      panel = factor(
+        panel,
+        levels = unique(panel[order(
+          !grepl("^Germany", panel)
+        )])
+      )
+    ),
+  aes(
+    x = values,
+    y = housing_group,
+    fill = housing_group
+  )
+) +
+
+  geom_col(
+    width = 0.65
+  ) +
+
+  geom_text(
+    aes(label = pct(values)),
+    hjust = -0.15,
+    size = 5,
+    fontface = "bold"
+  ) +
+
+  facet_wrap(
+    ~panel,
+    ncol = 1,
+    labeller = labeller(
+      panel = function(x) {
+        gsub(
+          "Renter minus mortgage:",
+          "Gap:",
+          x,
+          fixed = TRUE
+        )
+      }
+    )
+  ) +
+
+  scale_fill_manual(
+    values = tcols
+  ) +
+
+  scale_x_continuous(
+    breaks = seq(0, 20, 5),
+    expand = expansion(
+      mult = c(0, 0.15)
+    )
+  ) +
+
+  labs(
+    title = "Germany's renters and mortgage holders face almost equal housing-cost burdens",
+    x = "Overburden rate (%)",
+    y = NULL,
+    caption = cap("ilc_lvho07c")
+  ) +
+
+  base +
+
+  theme(
+    legend.position = "none",
+
     plot.title = element_text(
+      size = 17,
       face = "bold",
-      size = 17
+      margin = margin(b = 18)
     ),
 
-    plot.subtitle = element_text(
-      size = 11
+    strip.text = element_text(
+      size = 13,
+      face = "bold",
+      hjust = 0
+    ),
+
+    axis.text.y = element_text(
+      size = 12,
+      colour = "#333333"
     ),
 
     axis.text.x = element_text(
       size = 11
     ),
 
-    axis.title = element_text(
+    axis.title.x = element_text(
+      size = 12
+    ),
+
+    panel.grid.major.y = element_blank(),
+
+    panel.grid.minor = element_blank(),
+
+    panel.grid.major.x = element_line(
+      colour = "#E8E8E8",
+      linewidth = 0.4
+    ),
+
+    panel.spacing = grid::unit(0.8, "lines"),
+
+    plot.caption = element_text(
+      size = 10,
+      colour = "#555555"
+    )
+  )
+
+
+# ============================================================
+# VISUALISATION 4B
+# Germany versus EU by income quintile
+#
+# NEW DESIGN: Income profile chart
+# Replaces the previous dumbbell chart.
+# ============================================================
+
+
+# VISUALISATION 4B
+# Germany versus EU-27 by income quintile
+
+p4b <- ggplot(
+  visual4b_data,
+  aes(
+    x = income_group,
+    y = values,
+    colour = location,
+    group = location
+  )
+) +
+
+  geom_line(
+    data = filter(
+      visual4b_data,
+      location != "Germany"
+    ),
+    linewidth = 1.1
+  ) +
+
+  geom_line(
+    data = filter(
+      visual4b_data,
+      location == "Germany"
+    ),
+    linewidth = 1.6
+  ) +
+
+  geom_point(
+    size = 3.8
+  ) +
+
+  geom_text(
+    aes(
+      label = pct(values),
+      vjust = ifelse(
+        location == "Germany",
+        -1.2,
+        1.8
+      )
+    ),
+    size = 4.5,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+
+  scale_colour_manual(
+    values = cols
+  ) +
+
+  scale_y_continuous(
+    breaks = seq(0, 35, 5),
+    expand = expansion(
+      mult = c(0.12, 0.18)
+    )
+  ) +
+
+  labs(
+    title = "Housing-cost overburden is higher in Germany across every income quintile",
+    x = NULL,
+    y = "Overburden rate (%)",
+    colour = NULL,
+    caption = cap("ilc_lvho07b")
+  ) +
+
+  base +
+
+  theme(
+    plot.title = element_text(
+      size = 17,
+      face = "bold",
+      margin = margin(b = 18)
+    ),
+
+    axis.text.x = element_text(
+      size = 11,
+      colour = "#333333"
+    ),
+
+    axis.text.y = element_text(
+      size = 11
+    ),
+
+    axis.title.y = element_text(
       size = 12
     ),
 
@@ -359,507 +934,453 @@ visual3_new <- ggplot(
 
     panel.grid.minor = element_blank(),
 
-    legend.position = "none",
-
-    plot.caption = element_text(
-      size = 9,
-      hjust = 1
-    )
-  )
-
-
-# 3. Display the graph
-
-print(visual3_new)
-
-
-# 4. Save the redesigned graph
-
-ggsave(
-  "visual3_income_groups_redesigned.png",
-  plot = visual3_new,
-  width = 12,
-  height = 7,
-  dpi = 300,
-  bg = "white"
-)
-
-
-
-# ============================================================
-# VISUALISATION 4A
-# Germany Compared with the EU-27: Housing Tenure
-# ============================================================
-
-# 1. Prepare the data
-
-visual4a_data <- tenure_data %>%
-  filter(
-    geo %in% c("DE", "EU27_2020"),
-    TIME_PERIOD == 2025,
-    unit == "PC",
-    tenure %in% c("RENT_MKT", "OWN_L"),
-    !is.na(values)
-  ) %>%
-  mutate(
-    location = case_when(
-      geo == "DE" ~ "Germany",
-      geo == "EU27_2020" ~ "EU-27"
+    panel.grid.major.y = element_line(
+      colour = "#E8E8E8",
+      linewidth = 0.4
     ),
-    housing_group = case_when(
-      tenure == "RENT_MKT" ~ "Market-price renters",
-      tenure == "OWN_L" ~ "Owners with mortgages"
-    ),
-    location = factor(
-      location,
-      levels = c("EU-27", "Germany")
-    )
-  )
 
+    legend.position = "bottom",
 
-# 2. Check the data
-
-visual4a_data %>%
-  select(location, housing_group, values)
-
-
-# 3. Create the dumbbell plot
-
-visual4a <- ggplot(
-  visual4a_data,
-  aes(
-    x = values,
-    y = location,
-    colour = housing_group
-  )
-) +
-
-  geom_line(
-    aes(group = location),
-    colour = "grey65",
-    linewidth = 2
-  ) +
-
-  geom_point(size = 6) +
-
-  geom_text(
-    data = subset(visual4a_data, location == "EU-27"),
-    aes(label = paste0(values, "%")),
-    vjust = -1.5,
-    size = 4,
-    show.legend = FALSE
-  ) +
-
-  geom_text(
-    data = subset(
-      visual4a_data,
-      location == "Germany" & tenure == "RENT_MKT"
-    ),
-    aes(label = paste0(values, "%")),
-    hjust = -0.5,
-    vjust = -1,
-    size = 4,
-    show.legend = FALSE
-  ) +
-
-  geom_text(
-    data = subset(
-      visual4a_data,
-      location == "Germany" & tenure == "OWN_L"
-    ),
-    aes(label = paste0(values, "%")),
-    hjust = 1.5,
-    vjust = 2,
-    size = 4,
-    show.legend = FALSE
-  ) +
-
-  scale_colour_manual(
-    values = c(
-      "Market-price renters" = "#E76F51",
-      "Owners with mortgages" = "#2A9D8F"
-    )
-  ) +
-
-  scale_x_continuous(
-    breaks = seq(0, 20, 5)
-  ) +
-
-  coord_cartesian(
-    xlim = c(0, 23),
-    ylim = c(0.4, 2.6),
-    clip = "off"
-  ) +
-
-  annotate(
-    "label",
-    x = 5,
-    y = 2.35,
-    label = "Germany: Only a 0.2 percentage-point gap",
-    size = 4,
-    colour = "#216E63",
-    fill = "#E8F5F1"
-  ) +
-
-  annotate(
-    "label",
-    x = 12,
-    y = 0.65,
-    label = "EU-27: A 13.6 percentage-point gap",
-    size = 4,
-    colour = "#A64736",
-    fill = "#FFF0EC"
-  ) +
-
-  labs(
-    title = "Germany's Housing-Cost Divide Looks Different from the EU's",
-    subtitle = "Renters and mortgage holders face almost identical overburden rates in Germany (2025)",
-    x = "Housing-cost overburden rate (%)",
-    y = NULL,
-    colour = NULL,
-    caption = "Source: Eurostat (ilc_lvho07c)"
-  ) +
-
-  theme_minimal(base_size = 14) +
-
-  theme(
-    plot.title = element_text(
-      face = "bold",
-      size = 17
-    ),
-    plot.subtitle = element_text(
+    legend.text = element_text(
       size = 12
     ),
-    axis.text.y = element_text(
-      face = "bold",
-      size = 14
-    ),
-    legend.position = "bottom",
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor = element_blank()
-  )
 
-
-# 4. Display the graph
-
-print(visual4a)
-
-
-# 5. Save the graph
-
-ggsave(
-  "visual4a_germany_eu_tenure.png",
-  plot = visual4a,
-  width = 12,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
-
-
-
-
-
-
-# ============================================================
-# VISUALISATION 4B
-# Germany Compared with the EU-27: Income Groups
-# ============================================================
-
-# 1. Prepare the data
-
-visual4b_data <- income_data %>%
-  filter(
-    geo %in% c("DE", "EU27_2020"),
-    TIME_PERIOD == 2025,
-    unit == "PC",
-    quant_inc %in% c("QU1", "QU2", "QU3", "QU4", "QU5"),
-    !is.na(values)
-  ) %>%
-  mutate(
-    location = case_when(
-      geo == "DE" ~ "Germany",
-      geo == "EU27_2020" ~ "EU-27"
-    ),
-    income_group = case_when(
-      quant_inc == "QU1" ~ "Lowest 20%",
-      quant_inc == "QU2" ~ "Second 20%",
-      quant_inc == "QU3" ~ "Middle 20%",
-      quant_inc == "QU4" ~ "Fourth 20%",
-      quant_inc == "QU5" ~ "Highest 20%"
-    ),
-    income_group = factor(
-      income_group,
-      levels = c(
-        "Highest 20%",
-        "Fourth 20%",
-        "Middle 20%",
-        "Second 20%",
-        "Lowest 20%"
-      )
+    plot.caption = element_text(
+      size = 10,
+      colour = "#555555"
     )
   )
 
 
-# 2. Check the data
+# ============================================================
+# SECTION 8: SYNTHETIC DATA GENERATION
+# ============================================================
 
-visual4b_data %>%
-  select(location, income_group, values) %>%
-  arrange(income_group, location)
+# RESEARCH PURPOSE:
+#
+# The observed Eurostat datasets describe housing-cost
+# overburden by tenure and income separately.
+#
+# Our selected datasets do not directly provide
+# overburden rates for combined income-tenure groups.
+#
+# This synthetic scenario demonstrates how such a
+# combined analysis could be visualised.
+#
+# IMPORTANT:
+# Synthetic results are hypothetical, not observed
+# Eurostat statistics.
+#
+# MODEL ASSUMPTIONS:
+#
+# 1. Each tenure group contains equal proportions
+#    of the five income quintiles.
+#
+# 2. The observed German income profile informs
+#    the relative odds of housing-cost overburden.
+#
+# 3. Synthetic values are calibrated to reproduce
+#    the observed German tenure rates.
+#
+# 4. Observed income margins are not independently
+#    reproduced by this model.
+#
+# 5. The model is deterministic, meaning that it
+#    produces the same output for the same inputs.
+#
+# No random sampling is required.
 
 
-# 3. Create the connected dot plot
+# Extract the observed German income profile
 
-visual4b <- ggplot(
-  visual4b_data,
+q <- visual4b_data %>%
+  filter(geo == "DE") %>%
+  arrange(quant_inc)
+
+
+# Convert probabilities to log-odds.
+# Small probability bounds prevent infinite values.
+
+profile <- qlogis(
+  pmin(
+    0.9999,
+    pmax(
+      0.0001,
+      q$values / 100
+    )
+  )
+)
+
+
+# Centre the income profile
+
+profile <- profile - mean(profile)
+
+
+# Generate synthetic income-tenure combinations
+
+synthetic <- bind_rows(
+
+  lapply(
+
+    seq_len(nrow(visual1_data)),
+
+    function(j) {
+
+      # Observed tenure overburden probability
+
+      target <- visual1_data$values[j] / 100
+
+
+      # Calculate hypothetical income-specific
+      # probabilities within each tenure group.
+
+      probs <- if (target == 0 || target == 1) {
+
+        rep(target, 5)
+
+      } else {
+
+        # Calibrate the model to reproduce
+        # the observed tenure rate.
+
+        a <- uniroot(
+
+          function(a) {
+
+            mean(
+              plogis(a + profile)
+            ) - target
+
+          },
+
+          interval = c(-100, 100),
+
+          tol = 1e-12
+
+        )$root
+
+
+        plogis(a + profile)
+      }
+
+
+      # Return synthetic observations
+
+      data.frame(
+
+        housing_group = as.character(
+          visual1_data$housing_group[j]
+        ),
+
+        income_group = qlabels,
+
+        values = 100 * probs,
+
+        observed_tenure_rate = 100 * target,
+
+        assumed_weight = 0.2
+      )
+    }
+  )
+)
+
+
+# ============================================================
+# SECTION 9: SYNTHETIC DATA VALIDATION
+# ============================================================
+
+# Check whether synthetic tenure averages reproduce
+# the observed tenure rates under our assumptions.
+
+validation <- synthetic %>%
+  group_by(housing_group) %>%
+  summarise(
+
+    simulated_margin = sum(
+      values * assumed_weight
+    ),
+
+    observed = first(
+      observed_tenure_rate
+    ),
+
+    .groups = "drop"
+  )
+
+
+# Stop execution if calibration fails
+
+stopifnot(
+
+  max(
+    abs(
+      validation$simulated_margin -
+      validation$observed
+    )
+  ) < 1e-6
+)
+
+
+# Organise synthetic income groups
+
+synthetic$income_group <- factor(
+  synthetic$income_group,
+  levels = qlabels
+)
+
+
+# Organise synthetic tenure groups
+
+synthetic$housing_group <- factor(
+  synthetic$housing_group,
+  levels = rev(tlabels)
+)
+
+
+# Save synthetic data separately
+
+write.csv(
+
+  synthetic,
+
+  "data/rent_squeeze_synthetic_income_tenure.csv",
+
+  row.names = FALSE
+)
+
+
+# Save validation results
+
+write.csv(
+
+  validation,
+
+  "data/rent_squeeze_synthetic_validation.csv",
+
+  row.names = FALSE
+)
+
+
+# ============================================================
+# VISUALISATION 5
+# Synthetic income-tenure interaction
+#
+# NEW DESIGN: Heatmap
+# ============================================================
+
+p5 <- ggplot(
+  synthetic,
   aes(
-    x = values,
-    y = income_group,
-    colour = location
+    x = income_group,
+    y = housing_group,
+    fill = values
   )
 ) +
 
-  geom_line(
-    aes(group = income_group),
-    colour = "grey70",
-    linewidth = 1.5
-  ) +
-
-  geom_point(
-    size = 5
+  geom_tile(
+    colour = "white",
+    linewidth = 1.2
   ) +
 
   geom_text(
     aes(
-      label = paste0(values, "%")
+      label = pct(values),
+      colour = values >= 20
     ),
-    vjust = -1.2,
-    size = 3.8,
-    show.legend = FALSE
+    size = 4.5,
+    fontface = "bold"
   ) +
 
   scale_colour_manual(
     values = c(
-      "EU-27" = "#4C84A6",
-      "Germany" = "#2A9D8F"
-    )
+      "TRUE" = "white",
+      "FALSE" = "#422222"
+    ),
+    guide = "none"
   ) +
 
-  scale_x_continuous(
-    breaks = seq(0, 40, 5),
-    expand = expansion(mult = c(0.05, 0.12))
+  scale_fill_gradient(
+    low = "#FBE8DF",
+    high = "#9B282B",
+    limits = c(0, 40),
+    breaks = c(0, 10, 20, 30, 40),
+    name = "Simulated overburden (%)"
   ) +
 
   labs(
-    title = "Germany's Housing-Cost Burden Exceeds the EU Average at Every Income Level",
-    subtitle = "The lowest-income 20% face the greatest pressure: 31.5% in Germany versus 25.9% in the EU-27 (2025)",
-    x = "Housing-cost overburden rate (%)",
-    y = "Income group",
-    colour = NULL,
-    caption = "Source: Eurostat (ilc_lvho07b)"
+    title = "Low-income renters and mortgage holders face the greatest simulated burden in Germany",
+    x = "Income quintile",
+    y = NULL,
+    caption = paste0(
+      "Synthetic scenario for 2025: illustrative estimates, not observed Eurostat rates.\n",
+      "Assumes equal income-quintile weights within each tenure group.\n",
+      "Calibrated to observed tenure rates; income profile informs relative odds.\n",
+      "Sources: Eurostat (ilc_lvho07b and ilc_lvho07c)."
+    )
   ) +
 
-  theme_minimal(base_size = 14) +
+  base +
 
   theme(
-    plot.title = element_text(
-      face = "bold",
-      size = 18
-    ),
-    plot.subtitle = element_text(
-      size = 12
+    panel.grid = element_blank(),
+    axis.text.x = element_text(
+      size = 11,
+      face = "bold"
     ),
     axis.text.y = element_text(
-      face = "bold",
-      size = 12
+      size = 11
     ),
-    legend.position = "bottom",
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor = element_blank()
+    plot.title = element_text(
+      size = 14,
+      face = "bold"
+    ),
+    plot.caption = element_text(
+      size = 9,
+      hjust = 0
+    ),
+    legend.position = "bottom"
   )
 
-
-# 4. Display the graph
-
-print(visual4b)
-
-
-# 5. Save the graph
-
-ggsave(
-  "visual4b_germany_eu_income.png",
-  plot = visual4b,
-  width = 12,
-  height = 7,
-  dpi = 300,
-  bg = "white"
-)
-
-
 # ============================================================
-# Housing-Cost Overburden Over Time: Germany vs EU-27
+# OPTIONAL VISUALISATION
+# Historical housing-cost overburden trends
+# Germany versus EU-27, 2015-2025
 # ============================================================
 
-library(eurostat)
-library(dplyr)
-library(ggplot2)
+p6 <- ggplot(
 
-# 1. Download the Eurostat dataset
-
-trend_data <- get_eurostat(
-  "ilc_lvho07c",
-  time_format = "num"
-)
-
-# 2. Prepare the data
-
-optional_data <- trend_data %>%
-  filter(
-    geo %in% c("DE", "EU27_2020"),
-    tenure == "RENT_MKT",
-    unit == "PC",
-    TIME_PERIOD >= 2015,
-    TIME_PERIOD <= 2025,
-    !is.na(values)
-  ) %>%
-  mutate(
-    country = case_when(
-      geo == "DE" ~ "Germany",
-      geo == "EU27_2020" ~ "EU-27"
-    ),
-    year = as.integer(TIME_PERIOD)
-  ) %>%
-  arrange(country, year)
-
-# 3. Check the data
-
-print(
-  optional_data %>%
-    select(country, year, values),
-  n = Inf
-)
-
-# Check for duplicate observations
-
-optional_data %>%
-  count(country, year) %>%
-  print(n = Inf)
-
-# 4. Prepare labels for the final year
-
-end_labels <- optional_data %>%
-  filter(year == 2025) %>%
-  mutate(
-    label = paste0(round(values, 1), "%")
-  )
-
-# 5. Create the improved line graph
-
-optional_visual <- ggplot(
   optional_data,
+
   aes(
-    x = year,
+    x = TIME_PERIOD,
     y = values,
     colour = country,
     group = country
   )
+
 ) +
 
-  # Draw the lines
-  geom_line(linewidth = 1.3) +
+  geom_line(
+    linewidth = 1.2
+  ) +
 
-  # Add points for each year
-  geom_point(size = 3) +
+  geom_point(
+    size = 2.5
+  ) +
 
-  # Add percentage labels for 2025
   geom_text(
-    data = end_labels,
-    aes(label = label),
-    hjust = -0.2,
-    size = 4,
-    fontface = "bold",
+
+    data = filter(
+      optional_data,
+      TIME_PERIOD == year
+    ),
+
+    aes(
+      label = pct(values)
+    ),
+
+    hjust = -0.15,
+
     show.legend = FALSE
+
   ) +
 
-  # Highlight Germany's sharp decline in 2020
-  annotate(
-    "label",
-    x = 2019.7,
-    y = 16,
-    label = "Sharp decline in Germany\nbetween 2019 and 2020",
-    size = 3.5,
-    fill = "#E8F5F1",
-    colour = "#216E63"
-  ) +
-
-  # Set colours for Germany and the EU-27
   scale_colour_manual(
-    values = c(
-      "Germany" = "#2A9D8F",
-      "EU-27" = "#4C8AB6"
-    )
+    values = cols
   ) +
 
-  # Set the year axis
   scale_x_continuous(
-    breaks = seq(2015, 2025, 1),
-    limits = c(2015, 2026)
-  ) +
 
-  # Display percentages on the vertical axis
-  scale_y_continuous(
-    labels = function(x) paste0(x, "%")
-  ) +
+    breaks = 2015:year,
 
-  # Add titles and labels
-  labs(
-    title = "Has Housing-Cost Pressure Changed Over Time?",
-    subtitle = "Market-price renters in Germany and the EU-27 (2015–2025)",
-    x = "Year",
-    y = "Housing-cost overburden rate (%)",
-    colour = NULL,
-    caption = "Source: Eurostat (ilc_lvho07c)"
-  ) +
-
-  # Improve the appearance
-  theme_minimal(base_size = 13) +
-
-  theme(
-    plot.title = element_text(
-      face = "bold",
-      size = 17
-    ),
-
-    plot.subtitle = element_text(
-      size = 11
-    ),
-
-    legend.position = "bottom",
-
-    axis.text.x = element_text(
-      angle = 45,
-      hjust = 1
-    ),
-
-    panel.grid.minor = element_blank(),
-
-    plot.caption = element_text(
-      size = 9
+    expand = expansion(
+      mult = c(0.02, 0.12)
     )
-  )
 
-# 6. Display the graph
+  ) +
 
-print(optional_visual)
+  labs(
 
-# 7. Save the graph in the visualisations folder
+    title = "Housing-cost overburden among market-price renters over time",
 
-ggsave(
-  "visualisations/optional_housing_cost_trends.png",
-  plot = optional_visual,
-  width = 12,
-  height = 7,
-  dpi = 300,
-  bg = "white"
+    x = "Year",
+
+    y = "Overburden rate (%)",
+
+    colour = NULL,
+
+    caption = "Source: Eurostat (ilc_lvho07c), 2015–2025."
+
+  ) +
+
+  base
+
+
+# ============================================================
+# SECTION 10: EXPORT ALL SEVEN VISUALISATIONS
+# ============================================================
+
+save_plot(
+  p1,
+  "visual1_germany_redesigned.png"
 )
 
+save_plot(
+  p2,
+  "visual2_market_renters_redesigned.png",
+  12,
+  12
+)
+
+save_plot(
+  p3,
+  "visual3_income_groups_redesigned.png"
+)
+
+save_plot(
+  p4a,
+  "visual4a_germany_eu_tenure.png"
+)
+
+save_plot(
+  p4b,
+  "visual4b_germany_eu_income.png"
+)
+
+save_plot(
+  p5,
+  "visual5_synthetic_income_tenure.png",
+  14,
+  7
+)
+
+save_plot(
+  p6,
+  "optional_housing_cost_trends.png"
+)
+
+
+# ============================================================
+# SECTION 11: RECORD THE R ENVIRONMENT
+# ============================================================
+
+# Record R and package versions for reproducibility.
+
+writeLines(
+
+  capture.output(
+    sessionInfo()
+  ),
+
+  "data/rent_squeeze_session_info.txt"
+)
+
+
+# ============================================================
+# ANALYSIS COMPLETE
+# ============================================================
+
+message(
+  "Seven graphs exported. Synthetic calibration checks passed."
+)

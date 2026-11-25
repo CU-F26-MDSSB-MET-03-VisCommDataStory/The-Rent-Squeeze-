@@ -1,0 +1,21 @@
+"housing_group","income_group","values","observed_tenure_rate","assumed_weight"
+"Owners with mortgages","Lowest 20%",35.8688953907735,13,0.2
+"Owners with mortgages","Second 20%",14.3415476010337,13,0.2
+"Owners with mortgages","Middle 20%",8.38690894290415,13,0.2
+"Owners with mortgages","Fourth 20%",4.58414524568375,13,0.2
+"Owners with mortgages","Highest 20%",1.81850281960486,13,0.2
+"Owners without mortgages","Lowest 20%",17.3242202984063,5.8,0.2
+"Owners without mortgages","Second 20%",5.90242327618991,5.8,0.2
+"Owners without mortgages","Middle 20%",3.31607821722221,5.8,0.2
+"Owners without mortgages","Fourth 20%",1.76813863559973,5.8,0.2
+"Owners without mortgages","Highest 20%",0.689139572576288,5.8,0.2
+"Market-price renters","Lowest 20%",36.3357912820284,13.2,0.2
+"Market-price renters","Second 20%",14.5919862457068,13.2,0.2
+"Market-price renters","Middle 20%",8.54373639490495,13.2,0.2
+"Market-price renters","Fourth 20%",4.67349199531443,13.2,0.2
+"Market-price renters","Highest 20%",1.85499408204542,13.2,0.2
+"Reduced/free renters","Lowest 20%",26.5011080459557,9.2,0.2
+"Reduced/free renters","Second 20%",9.74194603288796,9.2,0.2
+"Reduced/free renters","Middle 20%",5.57282429303742,9.2,0.2
+"Reduced/free renters","Fourth 20%",3.00417229441085,9.2,0.2
+"Reduced/free renters","Highest 20%",1.17994933370797,9.2,0.2
