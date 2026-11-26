@@ -513,11 +513,82 @@ These findings contribute to the broader group data story and will be considered
 
 ## Python-Based Analysis and Visualisations
 
-This section is reserved for the Python-based contributions
-developed by other team members. The relevant methodologies,
-datasets, visualisations, findings and reproducibility
-instructions will be added by the respective contributors.
+This section documents the Python contribution: the context charts that show **how large each housing group is** (tenure shares) and **where** market-price renters and mortgage owners are overburdened across Europe (maps). They respond to the feedback that the story needs context before the overburden rates: who rents, who owns, and how big each group is.
 
+### Python Analytical Workflow
+
+1. Download two Eurostat tables with the `eurostat` Python package (`analysis/fetch_eurostat_data.py`):
+   - `ilc_lvho07c`: housing-cost overburden rate by tenure.
+   - `ilc_lvho02`: distribution of the population by tenure.
+2. Convert the wide Eurostat tables to tidy long format (`geo`, `tenure`, `year`, `value`).
+3. Filter `ilc_lvho02` to total population and all household types (`rskpovth = TOTAL`, `hhcomp = TOTAL`), then check that no country has more than one row per tenure and year.
+4. Save the snapshots to `data/eurostat_overburden_by_tenure.csv` and `data/eurostat_tenure_shares.csv`.
+5. Draw the stacked tenure chart and the maps from those saved CSV files.
+
+The charts read the saved CSV files, not the live Eurostat API. Eurostat revises its data: the 2025 figures for the EU-27 and Denmark changed between our first export (9 Oct 2026) and the API download of 12 Nov 2026. Figures in the Python charts come from the 12 Nov 2026 download.
+
+### Python Visualisations
+
+**Stacked bar chart: who rents and who owns** (`visualisations/stacked_tenure_shares_2025.png`)
+
+- Dataset: `ilc_lvho02`, 2025, total population.
+- Each bar is one country, split into owners without a mortgage, owners with a mortgage, market-price renters and reduced-price or free renters. Countries are sorted by the share of tenants.
+- Observations (2025):
+  - Germany: 52.8% of people live as tenants, compared with 31.5% in the EU-27.
+  - Mortgage owners are about a quarter of the population in both Germany (24.0%) and the EU-27 (24.8%).
+  - In Italy, 59.9% of people own without a mortgage. This is a descriptive observation only; the data do not tell us why.
+- Why it matters for the story: the overburden rate of a group means little without its size. It shows that the German mortgage-owner group is not small.
+
+**Maps: housing-cost overburden by country** (`visualisations/map_overburden_RENT_MKT_2025.png`, `visualisations/map_overburden_OWN_L_2025.png`)
+
+- Dataset: `ilc_lvho07c`, 2025.
+- The first map shows market-price renters, the second owners with a mortgage. Darker colour means a larger share of people above the 40% line; the colour scale stops at 40%, so Romania (56.0%) does not hide the differences elsewhere. Grey means no data. The maps use an equal-area projection (ETRS89-LAEA, EPSG:3035, as in Eurostat's own maps), so country sizes are proportional to real areas.
+- Observations, market-price renters (2025): Romania 56.0%, Netherlands 39.5%, Spain 26.8%, Italy 22.3%, Germany 13.2%, Finland 12.3%; EU-27 average 18.5%.
+- Observations, owners with a mortgage (2025): Germany 13.0%, EU-27 4.6%.
+- The maps compare rates of overburden. They do not compare rents or property prices.
+
+### What the Python Part Adds to the Findings
+
+- In Germany, mortgage owners and market-price renters have almost the same overburden rate (13.0% and 13.2%), and mortgage owners are about a quarter of the population. We do not yet know who these owners are or why their rate is this high.
+- Tenure shares differ a lot between countries, so a country's overburden rate has to be read together with how many people are in each group.
+
+### Limitations of the Python Part
+
+- The tenure-share and overburden tables are separate Eurostat tables, so the charts show group size and group rate side by side but do not combine them.
+- Neither table is split by income. We make no claim about how income and tenure relate; that would need household-level microdata.
+- National figures can hide regional and city differences.
+- Eurostat data are revised. Re-running the fetch script will download the current version, which can differ slightly from the figures above.
+- Some countries have no value for some tenure groups or years (grey on the maps).
+- Descriptive comparisons do not show causes.
+
+### Reproducing the Python Analysis
+
+Run these commands from the repository root (Windows PowerShell shown).
+
+1. Create and activate a virtual environment, then install the packages:
+   ```
+   python -m venv .venv
+   .venv\Scripts\activate
+   python -m pip install -r requirements.txt
+   python -m pip install geopandas
+   ```
+2. Download the data (needs an internet connection):
+   ```
+   python analysis/fetch_eurostat_data.py
+   ```
+   It prints the filter values and `duplicate geo/tenure/year rows after filtering (should be 0): 0`. If the number is not 0, do not continue.
+3. Draw the charts:
+   ```
+   python analysis/stacked_tenure_shares.py 2025
+   python analysis/map_overburden.py RENT_MKT 2025
+   python analysis/map_overburden.py OWN_L 2025
+   ```
+   Other tenure codes for the map: `OWN_NL`, `RENT_FR`, `TOTAL`.
+4. The images are saved in `visualisations/`.
+
+Files used: `analysis/fetch_eurostat_data.py`, `analysis/stacked_tenure_shares.py`, `analysis/map_overburden.py`, `data/eurostat_tenure_shares.csv`, `data/eurostat_overburden_by_tenure.csv`, `data/europe_countries.geojson` (country outlines from Natural Earth, public domain).
+
+Also in `analysis/`: `rent_squeeze_line_chart.py`, which draws the line chart for Germany, Italy, Spain and the EU-27 (owners with a mortgage) from the Excel export in `data/`.
 
 ## Data Attribution
 
